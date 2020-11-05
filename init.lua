@@ -28,24 +28,33 @@ minetest.log(S("[MOD] lib_mg_v6:  License: ") .. S(lib_mg_v6.license) .. "")
 
 
 	lib_mg_v6.heightmap = {}
-	lib_mg_v6.biomemap = {} 
-	lib_mg_v6.heatmap = {} 
-	lib_mg_v6.humiditymap = {} 
+	lib_mg_v6.biomemap = {}
+	lib_mg_v6.heatmap = {}
+	lib_mg_v6.humiditymap = {}
 
 	lib_mg_v6.water_level = 0
 
+	local nobj_terrain_base = nil
+	local nobj_terrain_higher = nil
+	local nobj_steepness = nil
+	local nobj_height_select = nil
+	local nbuf_terrain_base = {}
+	local nbuf_terrain_higher = {}
+	local nbuf_steepness = {}
+	local nbuf_height_select = {}
+
 	local nobj_heatmap = nil
-	local nbuf_heatmap = nil
 	local nobj_heatblend = nil
-	local nbuf_heatblend = nil
 	local nobj_humiditymap = nil
-	local nbuf_humiditymap = nil
 	local nobj_humidityblend = nil
-	local nbuf_humidityblend = nil
+	local nbuf_heatmap = {}
+	local nbuf_heatblend = {}
+	local nbuf_humiditymap = {}
+	local nbuf_humidityblend = {}
 
 	local c_air			= minetest.get_content_id("air")
 	local c_ignore			= minetest.get_content_id("ignore")
-	
+
 	local c_desertsand		= minetest.get_content_id("default:desert_sand")
 	local c_desertsandstone		= minetest.get_content_id("default:desert_sandstone")
 	local c_desertstone		= minetest.get_content_id("default:desert_stone")
@@ -87,7 +96,7 @@ minetest.log(S("[MOD] lib_mg_v6:  License: ") .. S(lib_mg_v6.license) .. "")
 	local c_desertstonebrick	= minetest.get_content_id("lib_materials:stone_desert_brick")
 	local c_sandstone]		= minetest.get_content_id("lib_materials:stone_sandstone")
 	local c_obsidian		= minetest.get_content_id("lib_materials:stone_obsidian")
-	
+
 	local c_sand			= minetest.get_content_id("lib_materials:sand")
 	local c_desertsand		= minetest.get_content_id("lib_materials:sand_desert")
 
@@ -98,14 +107,14 @@ minetest.log(S("[MOD] lib_mg_v6:  License: ") .. S(lib_mg_v6.license) .. "")
 	local c_top			= minetest.get_content_id("lib_materials:dirt_with_grass_green")
 	local c_coniferous		= minetest.get_content_id("lib_materials:litter_coniferous")
 	local c_rainforest		= minetest.get_content_id("lib_materials:litter_rainforest")
-	
+
 	local c_snow			= minetest.get_content_id("lib_materials:dirt_with_snow")
-	
+
 	local c_water			= minetest.get_content_id("lib_materials:liquid_water_source")
 	local c_river			= minetest.get_content_id("lib_materials:liquid_water_river_source")
-	
+
 	local c_lava			= minetest.get_content_id("lib_materials:liquid_lava_source")
-	
+
 	local c_tree			= minetest.get_content_id("lib_ecology:tree_default_trunk")
 --]]
 
@@ -200,21 +209,21 @@ minetest.log(S("[MOD] lib_mg_v6:  License: ") .. S(lib_mg_v6.license) .. "")
 
 	local function get_v6_base(terrain_base, terrain_higher,
 		steepness, height_select)
-	
+
 		local base   = 1 + terrain_base
 		local higher = 1 + terrain_higher
-	
+
 		-- Limit higher ground level to at least base
 		if higher < base then
 			higher = base
 		end
-	
+
 		-- Steepness factor of cliffs
 		local b = steepness
 		b = rangelim(b, 0.0, 1000.0)
 		b = 5 * b * b * b * b * b * b * b
 		b = rangelim(b, 0.5, 1000.0)
-	
+
 		-- Values 1.5...100 give quite horrible looking slopes
 		if b > 1.5 and b < 100.0 then
 			if b < 10 then
@@ -223,32 +232,40 @@ minetest.log(S("[MOD] lib_mg_v6:  License: ") .. S(lib_mg_v6.license) .. "")
 				b = 100
 			end
 		end
-	
+
 		local a_off = -0.20 -- Offset to more low
 		local a = 0.5 + b * (a_off + height_select);
 		a = rangelim(a, 0.0, 1.0) -- Limit
-	
-		return math.floor(base * (1.0 - a) + higher * a)
+
+		return math.floor(base * (1.0 - a) + higher * a)  + 2 -- (Dust)
 	end
 
+	-- this whole function gets skipped, since we don't query the noise values individualy
 	local function get_v6_height(z,x)
+		-- only initialize perlin objects once
+		nobj_terrain_base = nobj_terrain_base or minetest.get_perlin(mgv6_np_terrain_base)
+		nobj_terrain_higher = nobj_terrain_higher or minetest.get_perlin(mgv6_np_terrain_higher)
+		nobj_steepness = nobj_steepness or minetest.get_perlin(mgv6_np_steepness)
+		nobj_height_select = nobj_height_select or minetest.get_perlin(mgv6_np_height_select)
 
-		local terrain_base = minetest.get_perlin(mgv6_np_terrain_base):get_2d({
+		local terrain_base = nobj_terrain_base:get_2d({
+				-- As far as I can tell, thse are just static x/y offsets,
+				-- which don't add any value to the mapgen
 				x = x + 0.5 * mgv6_np_terrain_base.spread.x,
 				y = z + 0.5 * mgv6_np_terrain_base.spread.y})
-	
-		local terrain_higher = minetest.get_perlin(mgv6_np_terrain_higher):get_2d({
+
+		local terrain_higher = nobj_terrain_higher:get_2d({
 				x = x + 0.5 * mgv6_np_terrain_higher.spread.x,
 				y = z + 0.5 * mgv6_np_terrain_higher.spread.y})
-	
-		local steepness = minetest.get_perlin(mgv6_np_steepness):get_2d({
+
+		local steepness = nobj_steepness:get_2d({
 				x = x + 0.5 * mgv6_np_steepness.spread.x,
 				y = z + 0.5 * mgv6_np_steepness.spread.y})
-	
-		local height_select = minetest.get_perlin(mgv6_np_height_select):get_2d({
+
+		local height_select = nobj_height_select:get_2d({
 				x = x + 0.5 * mgv6_np_height_select.spread.x,
 				y = z + 0.5 * mgv6_np_height_select.spread.y})
-	
+
 		return get_v6_base(terrain_base, terrain_higher, steepness, height_select) + 2 -- (Dust)
 	end
 
@@ -268,51 +285,65 @@ minetest.log(S("[MOD] lib_mg_v6:  License: ") .. S(lib_mg_v6.license) .. "")
 
 
 	minetest.register_on_generated(function(minp, maxp, seed)
-		
+
 		-- Start time of mapchunk generation.
 		local t0 = os.clock()
-		
+
 		local sidelen = maxp.x - minp.x + 1
 		local permapdims2d = {x = sidelen, y = sidelen, z = 0}
 		local permapdims3d = {x = sidelen, y = sidelen, z = sidelen}
 
 		local vm, emin, emax = minetest.get_mapgen_object("voxelmanip")
-		data = vm:get_data()
+		vm:get_data(data)
 		local a = VoxelArea:new({MinEdge = emin, MaxEdge = emax})
 		local csize = vector.add(vector.subtract(maxp, minp), 1)
-	
+
+		-- initialize noise objects once
+		nobj_terrain_base = nobj_terrain_base or minetest.get_perlin_map(mgv6_np_terrain_base, permapdims3d)
+		nobj_terrain_higher = nobj_terrain_higher or minetest.get_perlin_map(mgv6_np_terrain_higher, permapdims3d)
+		nobj_steepness = nobj_steepness or minetest.get_perlin_map(mgv6_np_steepness, permapdims3d)
+		nobj_height_select = nobj_height_select or minetest.get_perlin_map(mgv6_np_height_select, permapdims3d)
+
 		nobj_heatmap = nobj_heatmap or minetest.get_perlin_map(np_heat, permapdims3d)
-		nbuf_heatmap = nobj_heatmap:get_2d_map({x=minp.x,y=minp.z})
 		nobj_heatblend = nobj_heatblend or minetest.get_perlin_map(np_heat_blend, permapdims3d)
-		nbuf_heatblend = nobj_heatblend:get_2d_map({x=minp.x,y=minp.z})
 		nobj_humiditymap = nobj_humiditymap or minetest.get_perlin_map(np_humid, permapdims3d)
-		nbuf_humiditymap = nobj_humiditymap:get_2d_map({x=minp.x,y=minp.z})
 		nobj_humidityblend = nobj_humidityblend or minetest.get_perlin_map(np_humid_blend, permapdims3d)
-		nbuf_humidityblend = nobj_humidityblend:get_2d_map({x=minp.x,y=minp.z})
-	
+
+		nobj_terrain_base:get_2d_map_flat({x=minp.x,y=minp.z}, nbuf_terrain_base)
+		nobj_terrain_higher:get_2d_map_flat({x=minp.x,y=minp.z}, nbuf_terrain_higher)
+		nobj_steepness:get_2d_map_flat({x=minp.x,y=minp.z}, nbuf_steepness)
+		nobj_height_select:get_2d_map_flat({x=minp.x,y=minp.z}, nbuf_height_select)
+
+		nobj_heatmap:get_2d_map_flat({x=minp.x,y=minp.z}, nbuf_heatmap)
+		nobj_heatblend:get_2d_map_flat({x=minp.x,y=minp.z}, nbuf_heatblend)
+		nobj_humiditymap:get_2d_map_flat({x=minp.x,y=minp.z}, nbuf_humiditymap)
+		nobj_humidityblend:get_2d_map_flat({x=minp.x,y=minp.z}, nbuf_humidityblend)
+
 		-- Mapgen preparation is now finished. Check the timer to know the elapsed time.
 		local t1 = os.clock()
-	
+
 		local write = false
-		
-	
+
+
 	--2D HEIGHTMAP GENERATION
 		local index2d = 0
-	
+
 		for z = minp.z, maxp.z do
 			for x = minp.x, maxp.x do
-	
+
 				index2d = (z - minp.z) * csize.x + (x - minp.x) + 1
 
-				lib_mg_v6.heightmap[index2d] = get_v6_height(z,x)
+				-- lib_mg_v6.heightmap[index2d] = get_v6_height(z,x)
+				lib_mg_v6.heightmap[index2d] = get_v6_base(nbuf_terrain_base[index2d],
+				nbuf_terrain_higher[index2d], nbuf_steepness[index2d], nbuf_height_select[index2d])
 
-				lib_mg_v6.heatmap[index2d] = (nbuf_heatmap[z-minp.z+1][x-minp.x+1] + nbuf_heatblend[z-minp.z+1][x-minp.x+1])
-				lib_mg_v6.humiditymap[index2d] = nbuf_humiditymap[z-minp.z+1][x-minp.x+1] + nbuf_humidityblend[z-minp.z+1][x-minp.x+1]
+				lib_mg_v6.heatmap[index2d] = nbuf_heatmap[index2d] + nbuf_heatblend[index2d]
+				lib_mg_v6.humiditymap[index2d] = nbuf_humiditymap[index2d] + nbuf_humidityblend[index2d]
 			end
 		end
-	
+
 		local t2 = os.clock()
-	
+
 		local t3 = os.clock()
 	--
 	--2D HEIGHTMAP RENDER
@@ -320,8 +351,8 @@ minetest.log(S("[MOD] lib_mg_v6:  License: ") .. S(lib_mg_v6.license) .. "")
 		for z = minp.z, maxp.z do
 			for y = minp.y, maxp.y do
 				for x = minp.x, maxp.x do
-				 
-					index2d = (z - minp.z) * csize.x + (x - minp.x) + 1   
+
+					index2d = (z - minp.z) * csize.x + (x - minp.x) + 1
 					local ivm = a:index(x, y, z)
 
 					local write_3d = false
@@ -329,10 +360,10 @@ minetest.log(S("[MOD] lib_mg_v6:  License: ") .. S(lib_mg_v6.license) .. "")
 					local nheat = lib_mg_v6.heatmap[index2d]
 					local nhumid = lib_mg_v6.humiditymap[index2d]
 					local t_biome_name = ""
-	
+
 					local fill_depth = 4
 					local top_depth = 1
-	
+
 	--BUILD BIOMES.
 	--
 --[[
@@ -486,37 +517,37 @@ minetest.log(S("[MOD] lib_mg_v6:  License: ") .. S(lib_mg_v6.license) .. "")
 				end
 			end
 		end
-		
+
 		local t4 = os.clock()
-	
+
 		if write then
 			vm:set_data(data)
 		end
-	
+
 		local t5 = os.clock()
-		
+
 		if write then
-	
+
 			minetest.generate_ores(vm,minp,maxp)
 			minetest.generate_decorations(vm,minp,maxp)
-				
+
 			vm:set_lighting({day = 0, night = 0})
 			vm:calc_lighting()
 			vm:update_liquids()
 		end
-	
+
 		local t6 = os.clock()
-	
+
 		if write then
 			vm:write_to_map()
 		end
-	
+
 		local t7 = os.clock()
-	
+
 		-- Print generation time of this mapchunk.
 		local chugent = math.ceil((os.clock() - t0) * 1000)
 		print ("[lib_mg_v6] Mapchunk generation time " .. chugent .. " ms")
-	
+
 		table.insert(mapgen_times.noisemaps, 0)
 		table.insert(mapgen_times.preparation, t1 - t0)
 		table.insert(mapgen_times.loop2d, t2 - t1)
@@ -526,7 +557,9 @@ minetest.log(S("[MOD] lib_mg_v6:  License: ") .. S(lib_mg_v6.license) .. "")
 		table.insert(mapgen_times.liquid_lighting, t6 - t5)
 		table.insert(mapgen_times.writing, t7 - t6)
 		table.insert(mapgen_times.make_chunk, t7 - t0)
-	
+
+		-- minetest.chat_send_all("Chunk generation time: " .. math.ceil((t7 - t0) * 1000) .. " ms.")
+
 		-- Deal with memory issues. This, of course, is supposed to be automatic.
 		local mem = math.floor(collectgarbage("count")/1024)
 		if mem > 1000 then
@@ -538,14 +571,14 @@ minetest.log(S("[MOD] lib_mg_v6:  License: ") .. S(lib_mg_v6.license) .. "")
 	local function mean( t )
 		local sum = 0
 		local count= 0
-	
+
 		for k,v in pairs(t) do
 			if type(v) == 'number' then
 				sum = sum + v
 				count = count + 1
 			end
 		end
-	
+
 		return (sum / count)
 	end
 
@@ -558,34 +591,34 @@ minetest.log(S("[MOD] lib_mg_v6:  License: ") .. S(lib_mg_v6.license) .. "")
 		if #mapgen_times.make_chunk == 0 then
 			return
 		end
-	
+
 		local average, standard_dev
 		minetest.log("lib_mg_v6 lua Mapgen Times:")
-	
+
 		average = mean(mapgen_times.liquid_lighting)
 		minetest.log("  liquid_lighting: - - - - - - - - - - - -  "..average)
-	
+
 		average = mean(mapgen_times.loop2d)
 		minetest.log(" 2D Noise loops: - - - - - - - - - - - - - - - - -  "..average)
-	
+
 		average = mean(mapgen_times.loop3d)
 		minetest.log(" 3D Noise loops: - - - - - - - - - - - - - - - - -  "..average)
-	
+
 		average = mean(mapgen_times.mainloop)
 		minetest.log(" Main Render loops: - - - - - - - - - - - - - - - - -  "..average)
-	
+
 		average = mean(mapgen_times.make_chunk)
 		minetest.log("  makeChunk: - - - - - - - - - - - - - - -  "..average)
-	
+
 		average = mean(mapgen_times.noisemaps)
 		minetest.log("  noisemaps: - - - - - - - - - - - - - - -  "..average)
-	
+
 		average = mean(mapgen_times.preparation)
 		minetest.log("  preparation: - - - - - - - - - - - - - -  "..average)
-	
+
 		average = mean(mapgen_times.setdata)
 		minetest.log("  writing: - - - - - - - - - - - - - - - -  "..average)
-	
+
 		average = mean(mapgen_times.writing)
 		minetest.log("  writing: - - - - - - - - - - - - - - - -  "..average)
 	end)
@@ -595,5 +628,3 @@ minetest.log(S("[MOD] lib_mg_v6:  License: ") .. S(lib_mg_v6.license) .. "")
 
 
 minetest.log(S("[MOD] lib_mg_v6:  Successfully loaded."))
-
-
